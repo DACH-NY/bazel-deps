@@ -6,6 +6,6 @@ mkShell {
   inputsFrom = [
   ];
   nativeBuildInputs = [
-    bazel git
+    bazel git jetbrains.idea-community
   ];
 }

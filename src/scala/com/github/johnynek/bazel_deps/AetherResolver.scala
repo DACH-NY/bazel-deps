@@ -31,7 +31,7 @@ class AetherResolver(servers: List[MavenServer], resolverCachePath: Path) extend
   private[this] val logger = LoggerFactory.getLogger(getClass)
 
   logger.info(s"using resolverCachePath: $resolverCachePath")
-  servers.foreach { case MavenServer(id, _, url) =>
+  servers.foreach { case MavenServer(id, _, url, _) =>
     logger.info(s"using resolver $id -> $url")
   }
 
@@ -62,7 +62,7 @@ class AetherResolver(servers: List[MavenServer], resolverCachePath: Path) extend
   }
 
   private val repositories =
-    servers.map { case MavenServer(id, t, u) =>
+    servers.map { case MavenServer(id, t, u, None) =>
       new RemoteRepository.Builder(id, t, u)
         // Disable warnings from bazel-deps not passing checksums to Aether.  Use the default update policy.
         .setPolicy(new RepositoryPolicy(true, RepositoryPolicy.UPDATE_POLICY_DAILY, RepositoryPolicy.CHECKSUM_POLICY_IGNORE))

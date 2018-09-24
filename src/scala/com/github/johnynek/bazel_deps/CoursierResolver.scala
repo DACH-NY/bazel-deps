@@ -1,11 +1,13 @@
 package com.github.johnynek.bazel_deps
 
-import coursier.{Fetch, Cache, CachePolicy, Resolution, Artifact, Dependency, Project}
-import coursier.util.{Task, Schedulable}
+import coursier.{Artifact, Cache, CachePolicy, Dependency, Fetch, Project, Resolution}
+import coursier.util.{Schedulable, Task}
 import cats.{Monad, MonadError, Traverse}
 import cats.data.{Nested, NonEmptyList, Validated, ValidatedNel}
 import cats.implicits._
+import coursier.core.Authentication
 import org.slf4j.LoggerFactory
+
 import scala.collection.immutable.SortedMap
 import scala.util.{Failure, Try}
 import scala.concurrent.{Await, ExecutionContext, Future}
@@ -18,7 +20,23 @@ object CoursierResolver {
 }
 class CoursierResolver(servers: List[MavenServer], ec: ExecutionContext, runTimeout: Duration) extends Resolver[Task] {
   // TODO: add support for a local file cache other than ivy
-  private[this] val repos = Cache.ivy2Local :: servers.map { ms => coursier.MavenRepository(ms.url) }
+  private[this] val repos = Cache.ivy2Local :: servers.map { ms =>
+    val auth = ms.credentials.map { credentialsEnv: CredentialsEnv =>
+      credentialsEnv match {
+        case CredentialsEnv(prefix) =>
+          val user = sys.env.get(prefix + "_USER") match {
+          case None => "" // XXX: How to handle errors?
+          case Some(s) => s
+          }
+          val password = sys.env.get(prefix + "_PASSWORD") match {
+          case None => "" // XXX: How to handle errors?
+          case Some(s) => s
+          }
+          Authentication(user, password)
+      }
+    }
+    coursier.MavenRepository(ms.url, authentication = auth)
+  }
 
   private[this] val fetch = Fetch.from(repos, Cache.fetch[Task](cachePolicy = CachePolicy.FetchMissing, pool = CoursierResolver.downloadPool))
 

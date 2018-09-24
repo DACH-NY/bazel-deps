@@ -1,15 +1,15 @@
 package com.github.johnynek.bazel_deps
 
-import java.io.{ BufferedReader, ByteArrayOutputStream, File, FileInputStream, FileReader, InputStream }
+import java.io.{BufferedReader, ByteArrayOutputStream, File, FileInputStream, FileReader, InputStream}
 import java.security.MessageDigest
+
 import scala.util.{Failure, Success, Try}
 import scala.util.control.NonFatal
-
 import org.typelevel.paiges.Doc
-import cats.kernel.{ CommutativeMonoid, Monoid, Semigroup }
+import cats.kernel.{CommutativeMonoid, Monoid, Semigroup}
 import cats.implicits._
-import cats.{ Applicative, Functor, Foldable, Id, SemigroupK }
-import cats.data.{ Validated, ValidatedNel, Ior, NonEmptyList }
+import cats.{Applicative, Foldable, Functor, Id, SemigroupK}
+import cats.data.{Ior, NonEmptyList, Validated, ValidatedNel}
 
 /**
  * These should be upstreamed to paiges
@@ -261,9 +261,13 @@ case class StrictVisibility(enabled: Boolean)
 object StrictVisibility {
   implicit val strictVisibilitySemiGroup: Semigroup[StrictVisibility] = Options.useRight.algebra[StrictVisibility]
 }
-case class MavenServer(id: String, contentType: String, url: String) {
+case class CredentialsEnv(prefix: String) {
+  def toDoc: Doc = Doc.text(prefix)
+}
+case class MavenServer(id: String, contentType: String, url: String, credentials: Option[CredentialsEnv]) {
   def toDoc: Doc =
     packedYamlMap(
+      // XXX: Update to include optional credentials.
       List(("id", quoteDoc(id)), ("type", quoteDoc(contentType)), ("url", Doc.text(url))))
 }
 
@@ -1243,7 +1247,7 @@ case class Options(
   }
   def getResolvers: List[MavenServer] =
     resolvers.getOrElse(
-      List(MavenServer("central", "default", "http://central.maven.org/maven2/")))
+      List(MavenServer("central", "default", "http://central.maven.org/maven2/", None)))
 
   def getTransitivity: Transitivity =
     transitivity.getOrElse(Transitivity.Exports)

@@ -1,7 +1,9 @@
 package com.github.johnynek.bazel_deps
 
+import java.io.File
+
 import cats.syntax.either._
-import io.circe.{ Decoder, KeyDecoder, Json, Error, Parser }
+import io.circe.{Decoder, Error, Json, KeyDecoder, Parser}
 import io.circe.generic.auto
 
 object Decoders {
@@ -49,14 +51,15 @@ object Decoders {
             Right(s)
         }
 
-      val goodKeys = Set("id", "url", "type")
+      val goodKeys = Set("id", "url", "type", "credentials")
       lazy val badKeys = smap.keySet -- goodKeys
       for {
         id <- expect("id")
         url <- expect("url")
         contentType = smap.getOrElse("type", "default")
+        credentials = smap.get("credentials").map(CredentialsEnv)
         _ <- if (badKeys.isEmpty) Right(()) else Left(s"unexpected keys: $badKeys")
-      } yield MavenServer(id, contentType, url)
+      } yield MavenServer(id, contentType, url, credentials)
     }
 
 

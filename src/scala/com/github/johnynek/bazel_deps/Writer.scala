@@ -81,7 +81,10 @@ object Writer {
     val servers = model.getOptions.getResolvers.map(s => (s.id, s.url)).toMap
     val lang = language(g, model)
     val prefix = model.getOptions.getNamePrefix
-    val lines = nodes.filterNot(replaced)
+    val serverLines = servers.toList.sortBy{ case (id, _) => id }.map{ case (srvId, srvUrl) =>
+        s"""    {"name": "$srvId", "url": "$srvUrl"},"""
+    }.mkString("\n")
+    val dependencyLines = nodes.filterNot(replaced)
       .toList
       .sortBy(_.asString)
       .map { case coord@MavenCoordinate(g, a, v) =>
@@ -95,16 +98,17 @@ object Writer {
           case None => ""
         }
 
-        val (sha1Str, sha256Str, serverStr, remoteUrl) = shas.get(coord) match {
+        val (sha1Str, sha256Str, serverStr, serverIdStr, remoteUrl) = shas.get(coord) match {
           case Some(sha) =>
             val sha1Str = kvOpt("sha1", sha.binaryJar.sha1.map(_.toHex), ", ")
             val sha256Str = kvOpt("sha256", sha.binaryJar.sha256.map(_.toHex), ", ")
             // val url = sha.url
             val serverUrlStr = kvOpt("repository", servers.get(sha.binaryJar.serverId), ", ")
+            val serverIdStr = kvOpt("server", Some(sha.binaryJar.serverId), ",")
             val urlStr = kvOpt("url", sha.binaryJar.url, ", ")
 
-            (sha1Str, sha256Str, serverUrlStr, urlStr)
-          case None => ("", "", "", "")
+            (sha1Str, sha256Str, serverUrlStr, serverIdStr, urlStr)
+          case None => ("", "", "", "", "")
         }
 
         val sourceStr = shas.get(coord).flatMap(_.sourceJar) match {
@@ -113,10 +117,11 @@ object Writer {
             val sha256Str = kvOpt("sha256", sourceJar.sha256.map(_.toHex), ", ")
             // val url = sha.url
             val serverUrlStr = kvOpt("repository", servers.get(sourceJar.serverId), ", ")
+            val serverIdStr = kvOpt("server", Some(sourceJar.serverId), ",")
             val urlStr = kvOpt("url", sourceJar.url, ", ")
 
-            (sha1Str, sha256Str, serverUrlStr, urlStr)
-            s""", "source": {$sha1Str$sha256Str$serverUrlStr$urlStr} """
+            (sha1Str, sha256Str, serverUrlStr, serverIdStr, urlStr)
+            s""", "source": {$sha1Str$sha256Str$serverUrlStr$serverIdStr$urlStr} """
           case None => ""
         }
 
@@ -137,7 +142,7 @@ object Writer {
         val l = lang(coord.unversioned)
         val actual = Label.externalJar(l, coord.unversioned, prefix)
         List(s"""$comment    {${kv("artifact", coord.asString)}""",
-             s"""${kv("lang", l.asString)}$sha1Str$sha256Str$serverStr$remoteUrl$sourceStr""",
+             s"""${kv("lang", l.asString)}$sha1Str$sha256Str$serverStr$serverIdStr$remoteUrl$sourceStr""",
              s"""${kv("name", coord.unversioned.toBazelRepoName(prefix))}""",
              s"""${kv("actual", actual.fromRoot)}""",
              s"""${kv("bind", coord.unversioned.toBindingName(prefix))}},""").mkString(", ")
@@ -145,21 +150,36 @@ object Writer {
       .mkString("\n")
     s"""# Do not edit. bazel-deps autogenerates this file from ${depsFile}.
         |
+        |def declare_maven_server(hash):
+        |    native.maven_server(
+        |        name = hash["name"],
+        |        url = hash["url"]
+        |    )
+        |
         |def declare_maven(hash):
         |    native.maven_jar(
         |        name = hash["name"],
         |        artifact = hash["artifact"],
         |        sha1 = hash["sha1"],
-        |        repository = hash["repository"]
+        |        server = hash["server"]
         |    )
         |    native.bind(
         |        name = hash["bind"],
         |        actual = hash["actual"]
         |    )
         |
+        |def list_servers():
+        |    return [
+        |$serverLines
+        |    ]
+        |
+        |def maven_servers(callback = declare_maven_server):
+        |    for hash in list_servers():
+        |        callback(hash)
+        |
         |def list_dependencies():
         |    return [
-        |$lines
+        |$dependencyLines
         |    ]
         |
         |def maven_dependencies(callback = declare_maven):

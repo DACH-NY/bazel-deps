@@ -1,16 +1,13 @@
 package com.github.johnynek.bazel_deps
 
-import cats.Traverse
+import IO.{Path, Result}
 import cats.data.NonEmptyList
+import cats.Traverse
 import cats.implicits._
-import com.github.johnynek.bazel_deps.IO.{Path, Result}
 import org.slf4j.LoggerFactory
-
-import scala.io.Source
+import scala.util.{ Failure, Success, Try }
 
 object Writer {
-  private lazy val jarArtifactBackend = Source.fromInputStream(
-    getClass.getResource("/templates/jar_artifact_backend.bzl").openStream()).mkString
 
   sealed abstract class TargetsError {
     def message: String
@@ -146,16 +143,26 @@ object Writer {
              s"""${kv("bind", coord.unversioned.toBindingName(prefix))}},""").mkString(", ")
       }
       .mkString("\n")
-
-    s"""# Do not edit. bazel-deps autogenerates this file from $depsFile.
-        |$jarArtifactBackend
+    s"""# Do not edit. bazel-deps autogenerates this file from ${depsFile}.
+        |
+        |def declare_maven(hash):
+        |    native.maven_jar(
+        |        name = hash["name"],
+        |        artifact = hash["artifact"],
+        |        sha1 = hash["sha1"],
+        |        repository = hash["repository"]
+        |    )
+        |    native.bind(
+        |        name = hash["bind"],
+        |        actual = hash["actual"]
+        |    )
         |
         |def list_dependencies():
         |    return [
         |$lines
         |    ]
         |
-        |def maven_dependencies(callback = jar_artifact_callback):
+        |def maven_dependencies(callback = declare_maven):
         |    for hash in list_dependencies():
         |        callback(hash)
         |""".stripMargin
@@ -170,7 +177,7 @@ object Writer {
 
     val langCache = scala.collection.mutable.Map[UnversionedCoordinate, Language]()
     def lang(u: UnversionedCoordinate): Language = langCache.getOrElseUpdate(u, {
-      import Language.{Java, Scala}
+      import Language.{ Java, Scala }
 
       model.dependencies.languageOf(u) match {
         case Some(l) => l

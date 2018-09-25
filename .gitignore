@@ -5,4 +5,3 @@ buildNumber.properties
 *.iml
 bazel-*
 .DS_Store
-.project/**
